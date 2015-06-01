@@ -505,8 +505,10 @@ module Bunny
 
     # @private
     def close_all_channels
-      @channels.reject {|n, ch| n == 0 || !ch.open? }.each do |_, ch|
-        Bunny::Timeout.timeout(@transport.disconnect_timeout, ClientTimeout) { ch.close }
+      @channel_mutex.synchronize do
+        @channels.reject {|n, ch| n == 0 || !ch.open? }.each do |_, ch|
+          Bunny::Timeout.timeout(@transport.disconnect_timeout, ClientTimeout) { ch.close }
+        end
       end
     end
 
@@ -620,8 +622,10 @@ module Bunny
           @recovering_from_network_failure = true
           if recoverable_network_failure?(exception)
             @logger.warn "Recovering from a network failure..."
-            @channels.each do |n, ch|
-              ch.maybe_kill_consumer_work_pool!
+            @channel_mutex.synchronize do
+              @channels.each do |n, ch|
+                ch.maybe_kill_consumer_work_pool!
+              end
             end
             maybe_shutdown_heartbeat_sender
 
@@ -677,10 +681,12 @@ module Bunny
       # default channel is reopened right after connection
       # negotiation is completed, so make sure we do not try to open
       # it twice. MK.
-      @channels.each do |n, ch|
-        ch.open
+      @channel_mutex.synchronize do
+        @channels.each do |n, ch|
+          ch.open
 
-        ch.recover_from_network_failure
+          ch.recover_from_network_failure
+        end
       end
     end
 
@@ -1180,8 +1186,10 @@ module Bunny
 
     # @private
     def shut_down_all_consumer_work_pools!
-      @channels.each do |_, ch|
-        ch.maybe_kill_consumer_work_pool!
+      @channel_mutex.synchronize do
+        @channels.each do |_, ch|
+          ch.maybe_kill_consumer_work_pool!
+        end
       end
     end
 
